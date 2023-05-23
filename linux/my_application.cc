@@ -1,11 +1,38 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
-#ifdef GDK_WINDOWING_X11
-#include <gdk/gdkx.h>
-#endif
+#include <gtk-layer-shell/gtk-layer-shell.h>
 
 #include "flutter/generated_plugin_registrant.h"
+
+static GtkWindow *window = nullptr;
+
+// static void respond(FlMethodCall *method_call, FlMethodResponse *response) {
+//   g_autoptr(GError) error = nullptr;
+//   if (!fl_method_call_respond(method_call, response, &error)) {
+//     g_warning("Failed to send method call response: %s", error->message);
+//   }
+// }
+
+static void method_call_cb(FlMethodChannel *channel, FlMethodCall *method_call, gpointer user_data) {
+  // const gchar *method = fl_method_call_get_name(method_call);
+  // const FlValue *args = fl_method_call_get_args(method_call);
+
+  // if (strcmp(method, "focusable") == 0) {
+  //   FlValue *focusable = fl_value_lookup_string(args, "focusable");
+  //
+  //   if (focusable != nullptr && fl_value_get_type(focusable) == FL_VALUE_TYPE_BOOL) {
+  //     gtk_layer_set_keyboard_mode(window, fl_value_get_bool(focusable) ? GTK_LAYER_SHELL_KEYBOARD_MODE_ON_DEMAND : GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+  //     g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(rl_method_success_response_new(fl_value_new_null()));
+  //     respond(method_call, response);
+  //     return;
+  //   }
+  // }
+
+  g_autoptr(FlMethodResponse) response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  g_autoptr(GError) error = nullptr;
+  fl_method_call_respond(method_call, response, &error);
+}
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -17,26 +44,17 @@ G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
-  GtkWindow* window =
-      GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  window = GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-  // Use a header bar when running in GNOME as this is the common style used
-  // by applications and is the setup most users will be using (e.g. Ubuntu
-  // desktop).
-  // If running on X and not using GNOME then just use a traditional title bar
-  // in case the window manager does more exotic layout, e.g. tiling.
-  // If running on Wayland assume the header bar will work (may need changing
-  // if future cases occur).
-  gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
-  GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
-    const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
-    if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
-      use_header_bar = FALSE;
-    }
-  }
-#endif
+  gtk_layer_init_for_window(window);
+  gtk_layer_set_namespace(window, "flutter_background_bar");
+  gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+  gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
+  // gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+  gtk_widget_set_size_request(GTK_WIDGET(window), 1920, 1080);
+
+  gboolean use_header_bar = FALSE;
+
   if (use_header_bar) {
     GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
     gtk_widget_show(GTK_WIDGET(header_bar));
@@ -47,7 +65,16 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "radiance");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  GdkScreen* gdkScreen;
+  GdkVisual* visual;
+  gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+  gdkScreen = gdk_screen_get_default();
+  visual = gdk_screen_get_rgba_visual(gdkScreen);
+  if (visual != NULL && gdk_screen_is_composited(gdkScreen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), visual);
+  }
+
+  gtk_window_set_default_size(window, 1, 1);
   gtk_widget_show(GTK_WIDGET(window));
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
@@ -58,6 +85,12 @@ static void my_application_activate(GApplication* application) {
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  FlEngine* engine = fl_view_get_engine(view);
+  g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
+  g_autoptr(FlBinaryMessenger) messenger = fl_engine_get_binary_messenger(engine);
+  g_autoptr(FlMethodChannel) channel = fl_method_channel_new(messenger, "general", FL_METHOD_CODEC(codec));
+  fl_method_channel_set_method_call_handler(channel, method_call_cb, g_object_ref(view), g_object_unref);
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
