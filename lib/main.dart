@@ -12,13 +12,18 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    var transparentTheme = ColorScheme.fromSeed(
+        seedColor: Colors.deepOrange,
+        background: Colors.transparent,
+        onBackground: Colors.transparent);
+
     return ChangeNotifierProvider(
       create: (context) => MyAppState(),
       child: MaterialApp(
         title: 'Radial Menu',
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange),
+          colorScheme: transparentTheme,
         ),
         home: MyHomePage(title: 'Home Page?'),
       ),
@@ -55,18 +60,19 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    var pieMenu = PieMenu(
-      onTap: _incrementCounter,
-      actions: defaultWheelModel()
-          .actions
-          .map((action) => action.toPieAction(null))
-          .toList(),
-      child: const Placeholder(),
-    );
     return Scaffold(
       body: PieCanvas(
-          theme: const PieTheme(delayDuration: Duration.zero),
-          child: Scaffold(body: pieMenu)),
+          theme: const PieTheme(
+              delayDuration: Duration.zero, overlayColor: Colors.transparent),
+          child: Scaffold(
+              body: PieMenu(
+            onTap: _incrementCounter,
+            actions: defaultWheelModel()
+                .actions
+                .map((action) => action.toPieAction(null))
+                .toList(),
+            child: const SizedBox.expand(),
+          ))),
     );
   }
 }
@@ -110,15 +116,21 @@ class Action {
     return PieAction(
       tooltip: name,
       onSelect: onSelect,
-      child: const Icon(Icons.home),
+      child: Icon(icon ?? Icons.home),
     );
   }
 }
 
 WheelModel defaultWheelModel() {
   return WheelModel([
-    Action(name: 'Left', command: ['notify-send', ' left']),
-    Action(name: 'Right', command: ['notify-send', 'right']),
+    Action(
+        name: 'Left',
+        icon: Icons.arrow_left,
+        command: ['hyprctl', 'dispatch', 'workspace', '-1']),
+    Action(
+        name: 'Right',
+        icon: Icons.arrow_right,
+        command: ['hyprctl', 'dispatch', 'workspace', '+1']),
     Action(name: 'Up', command: ['notify-send', 'up']),
     Action(name: 'Hang', command: ['sleep', '3s']),
     Action(
